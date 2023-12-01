@@ -6,8 +6,8 @@ fn part1(input: &str) -> u32 {
     input
         .lines()
         .map(|l| {
-            first_num(l.to_owned(), false, false).unwrap() * 10 +
-            first_num(l.to_owned(), false, true).unwrap()
+            first_num(l.to_owned(), false, false).unwrap() * 10
+                + first_num(l.to_owned(), false, true).unwrap()
         })
         .sum()
 }
@@ -51,12 +51,8 @@ fn first_num(mut s: String, with_letters: bool, reverse: bool) -> Option<u32> {
     let mut first: Option<(usize, u32)> = None;
     for (n_s, n_i) in nums.iter() {
         if let Some(p) = s.find(n_s) {
-            if first.is_none() {
+            if first.is_none() || first.unwrap().0 > p {
                 first = Some((p, *n_i));
-            } else {
-                if first.unwrap().0 > p {
-                    first = Some((p, *n_i));
-                }
             }
         }
     }
@@ -64,7 +60,7 @@ fn first_num(mut s: String, with_letters: bool, reverse: bool) -> Option<u32> {
     if let Some(f) = first {
         return Some(f.1);
     }
-    return None;
+    None
 }
 
 #[test]
@@ -91,15 +87,15 @@ fn part2(input: &str) -> u32 {
     input
         .lines()
         .map(|l| {
-            first_num(l.to_owned(), true, false).unwrap() * 10 +
-            first_num(l.to_owned(), true, true).unwrap()
+            first_num(l.to_owned(), true, false).unwrap() * 10
+                + first_num(l.to_owned(), true, true).unwrap()
         })
         .sum()
 }
 
+#[cfg(test)]
 mod test {
     use super::*;
-
     #[test]
     fn test_parse1() {
         let test_input_1 = "1abc2
