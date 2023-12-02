@@ -1,8 +1,10 @@
 use std::{collections::HashMap, str::FromStr};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 const INPUT: &str = include_str!("day02/input.txt");
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, EnumIter)]
 enum Color {
     Red,
     Green,
@@ -40,6 +42,16 @@ impl FromStr for Hand {
                 })
                 .collect::<HashMap<Color, u32>>(),
         })
+    }
+}
+
+impl Hand {
+    fn power(&self) -> u32 {
+        let mut res = 1;
+        for c in Color::iter() {
+            res *= self.cubes.get(&c).unwrap_or(&0);
+        }
+        res
     }
 }
 
@@ -86,6 +98,18 @@ impl Game {
         }
         true
     }
+
+    fn min_initial(&self) -> HashMap<Color, u32> {
+        let mut res = HashMap::from([(Color::Red, 0), (Color::Green, 0), (Color::Blue, 0)]);
+        for hand in self.hands.iter() {
+            for cube in hand.cubes.iter() {
+                res.entry(*cube.0).and_modify(|e| {
+                    *e = std::cmp::max(*e, *cube.1);
+                });
+            }
+        }
+        res
+    }
 }
 
 #[test]
@@ -112,16 +136,22 @@ fn test_parse_game() {
 }
 
 fn part1(input: &str) -> u32 {
-    let initial = HashMap::from([(Color::Red, 12), (Color::Green, 13), (Color::Blue, 14)]);
+    let initial: HashMap<Color, u32> = HashMap::from([(Color::Red, 12), (Color::Green, 13), (Color::Blue, 14)]);
     input
         .lines()
         .map(|l| Game::from_str(l).unwrap())
         .filter(|g| g.is_possible(&initial))
-        .map(|g| g.id).sum()
+        .map(|g| g.id)
+        .sum()
 }
 
 fn part2(input: &str) -> u32 {
-    unimplemented!();
+    input
+        .lines()
+        .map(|l| Game::from_str(l).unwrap())
+        .map(|g| Hand { cubes: g.min_initial() })
+        .map(|h| h.power())
+        .sum()    
 }
 
 #[cfg(test)]
@@ -136,6 +166,17 @@ mod test {
         Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
 
         assert_eq!(part1(test_input_1), 8);
+    }
+
+    #[test]
+    fn test_parse2() {
+        let test_input_2 = "Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green
+        Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue
+        Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red
+        Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
+        Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
+
+        assert_eq!(part2(test_input_2), 2286);
     }
 }
 
