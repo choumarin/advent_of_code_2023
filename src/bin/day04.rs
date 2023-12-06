@@ -1,6 +1,6 @@
 use std::{
-    collections::{HashMap, HashSet, BTreeMap},
-    str::{CharIndices, FromStr}, cell::RefCell, vec,
+    collections::{BTreeMap, HashSet},
+    str::FromStr,
 };
 
 const INPUT: &str = include_str!("day04/input.txt");
@@ -46,7 +46,7 @@ impl Card {
     }
 
     fn points(&self) -> i32 {
-            let mut p: i32 = 0;
+        let mut p: i32 = 0;
         for &h in self.have.iter() {
             if self.win.contains(&h) {
                 if p == 0 {
@@ -104,7 +104,7 @@ fn part2(input: &str) -> i32 {
         if matching == 0 {
             continue;
         }
-        let copies =  all_cards.get(&id).unwrap().1;
+        let copies = all_cards.get(&id).unwrap().1;
         for i in (id + 1)..(id + matching + 1) {
             all_cards.get_mut(&i).unwrap().1 += copies;
         }
