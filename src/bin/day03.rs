@@ -199,7 +199,7 @@ fn part2(input: &str) -> i32 {
 mod test {
     use super::*;
 
-    const test_input: &str = "467..114..
+    const TEST_INPUT: &str = "467..114..
 ...*......
 ..35..633.
 ......#...
@@ -212,12 +212,12 @@ mod test {
 
     #[test]
     fn test_parse1() {
-        assert_eq!(part1(test_input), 4361);
+        assert_eq!(part1(TEST_INPUT), 4361);
     }
 
     #[test]
     fn test_parse2() {
-        assert_eq!(part2(test_input), 467835);
+        assert_eq!(part2(TEST_INPUT), 467835);
     }
 }
 

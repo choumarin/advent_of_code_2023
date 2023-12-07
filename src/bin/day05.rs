@@ -186,7 +186,7 @@ fn part2(input: &str) -> i64 {
 mod test {
     use super::*;
 
-    const test_input: &str = "seeds: 79 14 55 13
+    const TEST_INPUT: &str = "seeds: 79 14 55 13
 
 seed-to-soil map:
 50 98 2
@@ -222,12 +222,12 @@ humidity-to-location map:
 
     #[test]
     fn test_parse1() {
-        assert_eq!(part1(test_input), 35);
+        assert_eq!(part1(TEST_INPUT), 35);
     }
 
     #[test]
     fn test_parse2() {
-        assert_eq!(part2(test_input), 46);
+        assert_eq!(part2(TEST_INPUT), 46);
     }
 }
 
