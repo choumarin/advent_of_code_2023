@@ -1,4 +1,8 @@
-use std::str::FromStr;
+use std::{
+    cmp::{max, min},
+    ops::RangeInclusive,
+    str::FromStr,
+};
 
 const INPUT: &str = include_str!("day05/input.txt");
 
@@ -29,28 +33,48 @@ fn test_map_parse() {
     assert_eq!(
         "50 98 2".parse(),
         Ok(MapLine {
-            source_start: 50,
-            dest_start: 98,
+            source_start: 98,
+            dest_start: 50,
             len: 2
         })
     );
 }
 
-type Seeds = Vec<i64>;
+impl MapLine {
+    fn source_range(&self) -> RangeInclusive<i64> {
+        self.source_start..=(self.source_start + self.len - 1)
+    }
+    fn offset(&self) -> i64 {
+        self.dest_start - self.source_start
+    }
+}
 
-fn parse_input(input: &str) -> (Seeds, Vec<Map>) {
+type SeedsRange = RangeInclusive<i64>;
+
+fn parse_input(input: &str, part2: bool) -> (Vec<SeedsRange>, Vec<Map>) {
     // Assume maps are in the proper order
     let mut lines = input.lines();
     let seed_line = lines.next().unwrap();
     let mut parts = seed_line.split(':');
     assert_eq!(parts.next().unwrap(), "seeds");
-    let seeds = parts
-        .next()
-        .unwrap()
-        .split_whitespace()
-        .map(|i| i.parse::<i64>().unwrap())
-        .collect::<Vec<_>>();
-
+    let seeds = if !part2 {
+        parts
+            .next()
+            .unwrap()
+            .split_whitespace()
+            .map(|i| (i.parse().unwrap()..=i.parse().unwrap()))
+            .collect::<Vec<_>>()
+    } else {
+        parts
+            .next()
+            .unwrap()
+            .split_whitespace()
+            .map(|i| i.parse::<i64>().unwrap())
+            .collect::<Vec<_>>()
+            .chunks(2)
+            .map(|r| (r[0]..=r[0] + r[1] - 1))
+            .collect::<Vec<_>>()
+    };
     let mut maps = Vec::new();
     let mut current_map: Option<Vec<MapLine>> = None;
     for line in lines {
@@ -73,13 +97,48 @@ fn parse_input(input: &str) -> (Seeds, Vec<Map>) {
     (seeds, maps)
 }
 
-fn apply_maps(source: i64, map: &Map) -> i64 {
-    for m in map {
-        if m.source_start <= source && source < m.source_start + m.len {
-            return source - m.source_start + m.dest_start;
+fn offset_range(range: SeedsRange, offset: i64) -> SeedsRange {
+    SeedsRange::new(range.start() + offset, range.end() + offset)
+}
+
+fn intersect(source: SeedsRange, map: &MapLine) -> Option<SeedsRange> {
+    let intersection = max(*source.start(), *map.source_range().start())
+        ..=min(*source.end(), *map.source_range().end());
+    if !intersection.is_empty() {
+        Some(intersection.clone())
+    } else {
+        None
+    }
+}
+
+fn apply_map(source: SeedsRange, map: &Map) -> Vec<SeedsRange> {
+    let mut ret = Vec::new();
+    let mut remaining_seeds = vec![source];
+    for m in map.iter() {
+        let current_seeds = remaining_seeds.clone();
+        remaining_seeds.clear();
+        for s in current_seeds {
+            if let Some(intersection) = intersect(s.clone(), m) {
+                ret.push(offset_range(intersection.clone(), m.offset()));
+                let exclusions = vec![
+                    *s.start()..=(intersection.start() - 1),
+                    (*intersection.end() + 1)..=*s.end(),
+                ];
+                for e in exclusions {
+                    if !e.is_empty() {
+                        remaining_seeds.push(e);
+                    }
+                }
+            } else {
+                remaining_seeds.push(s);
+            }
         }
     }
-    source
+    ret.append(&mut remaining_seeds);
+
+    // TODO: Merge back ?
+
+    ret
 }
 
 #[test]
@@ -89,24 +148,38 @@ fn test_apply_map() {
 seed-to-soil map:
 50 98 2
 52 50 48";
-    let (_, maps) = parse_input(input);
-    dbg!(&maps);
-    assert_eq!(apply_maps(79, &maps[0]), 81);
-    assert_eq!(apply_maps(1, &maps[0]), 1);
+    let (seeds, maps) = parse_input(input, false);
+    assert_eq!(apply_map(seeds[0].clone(), &maps[0]), vec![81..=81]);
+    assert_eq!(apply_map(seeds[1].clone(), &maps[0]), vec![14..=14]);
+    assert_eq!(apply_map(seeds[2].clone(), &maps[0]), vec![57..=57]);
+    assert_eq!(apply_map(seeds[3].clone(), &maps[0]), vec![13..=13]);
+    let (seeds, maps) = parse_input(input, true);
+    assert_eq!(apply_map(seeds[0].clone(), &maps[0]), vec![81..=94]);
+    assert_eq!(apply_map(seeds[1].clone(), &maps[0]), vec![57..=69]);
 }
 
 fn part1(input: &str) -> i64 {
-    let (mut seeds, maps) = parse_input(input);
-    for s in seeds.iter_mut() {
-        for m in maps.iter() {
-            *s = apply_maps(*s, m);
+    let (mut seeds, maps) = parse_input(input, false);
+    for m in maps.iter() {
+        let mut next_seeds = Vec::new();
+        for s in seeds.drain(..) {
+            next_seeds.append(&mut apply_map(s, m));
         }
+        seeds = next_seeds;
     }
-    seeds.into_iter().min().unwrap()
+    seeds.into_iter().map(|s| *s.start()).min().unwrap()
 }
 
 fn part2(input: &str) -> i64 {
-    unimplemented!()
+    let (mut seeds, maps) = parse_input(input, true);
+    for m in maps.iter() {
+        let mut next_seeds = Vec::new();
+        for s in seeds.drain(..) {
+            next_seeds.append(&mut apply_map(s, m));
+        }
+        seeds = next_seeds;
+    }
+    seeds.into_iter().map(|s| *s.start()).min().unwrap()
 }
 
 #[cfg(test)]
@@ -154,7 +227,7 @@ humidity-to-location map:
 
     #[test]
     fn test_parse2() {
-        assert_eq!(part2(test_input), 30);
+        assert_eq!(part2(test_input), 46);
     }
 }
 
