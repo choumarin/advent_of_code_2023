@@ -3,8 +3,12 @@ use std::{collections::HashMap, str::FromStr};
 
 const INPUT: &str = include_str!("day07/input.txt");
 
-const CARDS_FACES: &[char] = &[
+const CARDS_FACES_P1: &[char] = &[
     'A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2',
+];
+
+const CARDS_FACES_P2: &[char] = &[
+    'A', 'K', 'Q', 'T', '9', '8', '7', '6', '5', '4', '3', '2', 'J',
 ];
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -23,21 +27,43 @@ fn test_type_ord() {
     assert!(HandType::FiveKind > HandType::FourKind);
 }
 
+enum Rules {
+    Part1,
+    Part2,
+}
+
+struct ParsedHand {
+    cards: Vec<char>,
+}
+
 struct Hand {
     cards: Vec<char>,
     hand_type: HandType,
+    rules: Rules,
 }
 
-impl FromStr for Hand {
+impl FromStr for ParsedHand {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let cards = s.chars().collect::<Vec<_>>();
-        if cards.len() != 5 || !cards.iter().all(|c| CARDS_FACES.contains(c)) {
+        if cards.len() != 5 || !cards.iter().all(|c| CARDS_FACES_P1.contains(c)) {
             return Err(());
         }
-        let hand_type = type_from_cards(&cards);
-        Ok(Hand { cards, hand_type })
+        Ok(ParsedHand { cards })
+    }
+}
+
+impl ParsedHand {
+    fn hand(self, rules: Rules) -> Hand {
+        Hand {
+            hand_type: match rules {
+                Rules::Part1 => type_from_cards(&self.cards),
+                Rules::Part2 => type_from_cards_with_jocker(&self.cards),
+            },
+            cards: self.cards,
+            rules,
+        }
     }
 }
 
@@ -75,21 +101,111 @@ fn type_from_cards(cards: &Vec<char>) -> HandType {
     }
 }
 
+fn type_from_cards_with_jocker(cards: &Vec<char>) -> HandType {
+    let mut map = HashMap::<char, i32>::new();
+    for c in cards {
+        *map.entry(*c).or_insert(0) += 1;
+    }
+    let mut counts_no_jockers = map
+        .iter()
+        .filter_map(|(&key, val)| (key != 'J').then_some(val))
+        .collect::<Vec<_>>();
+    counts_no_jockers.sort_unstable_by(|a, b| b.cmp(a));
+    // Assume all is ok for defaults
+    if counts_no_jockers.is_empty() {
+        return HandType::FiveKind;
+    }
+    match counts_no_jockers[0] {
+        5 => HandType::FiveKind,
+        4 => {
+            if map.get(&'J') == Some(&1) {
+                HandType::FiveKind
+            } else {
+                HandType::FourKind
+            }
+        }
+        3 => {
+            if map.get(&'J') == Some(&2) {
+                HandType::FiveKind
+            } else if map.get(&'J') == Some(&1) {
+                HandType::FourKind
+            } else {
+                match counts_no_jockers[1] {
+                    2 => HandType::House,
+                    1 => HandType::ThreeKind,
+                    _ => unreachable!(),
+                }
+            }
+        }
+        2 => {
+            if map.get(&'J') == Some(&3) {
+                HandType::FiveKind
+            } else if map.get(&'J') == Some(&2) {
+                HandType::FourKind
+            } else {
+                match counts_no_jockers[1] {
+                    2 => {
+                        if map.get(&'J') == Some(&1) {
+                            HandType::House
+                        } else {
+                            HandType::TwoPair
+                        }
+                    }
+                    1 => {
+                        if map.get(&'J') == Some(&1) {
+                            HandType::TwoPair
+                        } else {
+                            HandType::OnePair
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+        _ => match map.get(&'J') {
+            Some(&5) => unreachable!(),
+            Some(&4) => HandType::FiveKind,
+            Some(&3) => HandType::FourKind,
+            Some(&2) => HandType::ThreeKind,
+            Some(&1) => HandType::OnePair,
+            _ => HandType::High,
+        },
+    }
+}
+
 #[test]
 fn test_parse() {
     assert_eq!(
-        "32T3K".parse(),
-        Ok(Hand {
+        "32T3K".parse::<ParsedHand>().unwrap().hand(Rules::Part1),
+        Hand {
             cards: vec!['3', '2', 'T', '3', 'K'],
-            hand_type: HandType::OnePair
-        })
+            hand_type: HandType::OnePair,
+            rules: Rules::Part1
+        }
     );
     assert_eq!(
-        "T55J5".parse(),
-        Ok(Hand {
+        "T55J5".parse::<ParsedHand>().unwrap().hand(Rules::Part1),
+        Hand {
             cards: vec!['T', '5', '5', 'J', '5'],
-            hand_type: HandType::ThreeKind
-        })
+            hand_type: HandType::ThreeKind,
+            rules: Rules::Part1
+        }
+    );
+    assert_eq!(
+        "T55J5".parse::<ParsedHand>().unwrap().hand(Rules::Part2),
+        Hand {
+            cards: vec!['T', '5', '5', 'J', '5'],
+            hand_type: HandType::FourKind,
+            rules: Rules::Part2
+        }
+    );
+    assert_eq!(
+        "J2TK7".parse::<ParsedHand>().unwrap().hand(Rules::Part2),
+        Hand {
+            cards: vec!['J', '2', 'T', 'K', '7'],
+            hand_type: HandType::OnePair,
+            rules: Rules::Part2
+        }
     );
 }
 
@@ -99,27 +215,45 @@ impl PartialOrd for Hand {
             return self.hand_type.partial_cmp(&other.hand_type);
         } else {
             for (a, b) in self.cards.iter().zip(other.cards.iter()) {
-                if CARDS_FACES.iter().position(|c| c == a).unwrap()
-                    == CARDS_FACES.iter().position(|c| c == b).unwrap()
+                let card_list = match self.rules {
+                    Rules::Part1 => CARDS_FACES_P1,
+                    Rules::Part2 => CARDS_FACES_P2,
+                };
+                if card_list.iter().position(|c| c == a).unwrap()
+                    == card_list.iter().position(|c| c == b).unwrap()
                 {
                     continue;
                 }
-                return CARDS_FACES
+                return card_list
                     .iter()
                     .position(|c| c == b)
                     .unwrap()
-                    .partial_cmp(&CARDS_FACES.iter().position(|c| c == a).unwrap());
+                    .partial_cmp(&card_list.iter().position(|c| c == a).unwrap());
             }
         }
+        dbg!(self, other);
         None
     }
 }
 
 #[test]
 fn test_cmp() {
-    assert!("32T3K".parse::<Hand>().unwrap() < "T55J5".parse::<Hand>().unwrap());
-    assert!("33332".parse::<Hand>().unwrap() > "2AAAA".parse::<Hand>().unwrap());
-    assert!("KK677".parse::<Hand>().unwrap() > "KTJJT".parse::<Hand>().unwrap());
+    assert!(
+        "32T3K".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
+            < "T55J5".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
+    );
+    assert!(
+        "33332".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
+            > "2AAAA".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
+    );
+    assert!(
+        "KK677".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
+            > "KTJJT".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
+    );
+    assert!(
+        "QQQQ2".parse::<ParsedHand>().unwrap().hand(Rules::Part2)
+            > "JKKK2".parse::<ParsedHand>().unwrap().hand(Rules::Part2)
+    );
 }
 
 impl PartialEq for Hand {
@@ -129,11 +263,16 @@ impl PartialEq for Hand {
 }
 
 fn part1(input: &str) -> i64 {
-    let mut hands = input
+    let mut hands: Vec<(Hand, i64)> = input
         .lines()
         .map(|l| {
             let mut parts = l.split_whitespace();
-            let hand = parts.next().unwrap().parse::<Hand>().unwrap();
+            let hand = parts
+                .next()
+                .unwrap()
+                .parse::<ParsedHand>()
+                .unwrap()
+                .hand(Rules::Part1);
             let bet = parts.next().unwrap().parse::<i64>().unwrap();
             (hand, bet)
         })
@@ -148,7 +287,27 @@ fn part1(input: &str) -> i64 {
 }
 
 fn part2(input: &str) -> i64 {
-    unimplemented!()
+    let mut hands: Vec<(Hand, i64)> = input
+        .lines()
+        .map(|l| {
+            let mut parts = l.split_whitespace();
+            let hand = parts
+                .next()
+                .unwrap()
+                .parse::<ParsedHand>()
+                .unwrap()
+                .hand(Rules::Part2);
+            let bet = parts.next().unwrap().parse::<i64>().unwrap();
+            (hand, bet)
+        })
+        .collect::<Vec<_>>();
+    hands.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    dbg!(&hands);
+    hands
+        .into_iter()
+        .enumerate()
+        .map(|(rank, (_, bet))| (rank + 1) as i64 * bet)
+        .sum()
 }
 
 #[cfg(test)]
@@ -168,7 +327,7 @@ QQQJA 483";
 
     #[test]
     fn test_parse2() {
-        assert_eq!(part2(TEST_INPUT), 0);
+        assert_eq!(part2(TEST_INPUT), 5905);
     }
 }
 
