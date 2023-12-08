@@ -1,3 +1,4 @@
+use num::integer::lcm;
 use std::collections::HashMap;
 
 const INPUT: &str = include_str!("day08/input.txt");
@@ -69,7 +70,24 @@ fn part1(input: &str) -> i64 {
 }
 
 fn part2(input: &str) -> i64 {
-    unimplemented!()
+    let (directions, adj_list) = parse(input);
+    let start_nodes = adj_list
+        .keys()
+        .filter(|s| s.ends_with('A'))
+        .copied()
+        .collect::<Vec<&str>>();
+    assert!(!directions.is_empty());
+    let mut all_steps = Vec::new();
+    for mut start_node in start_nodes {
+        let mut steps = 0u64;
+        let mut direction_iter = directions.iter().cycle();
+        while !start_node.ends_with('Z') {
+            start_node = adj_list.get(start_node).unwrap()[direction_iter.next().unwrap().idx()];
+            steps += 1;
+        }
+        all_steps.push(steps)
+    }
+    all_steps.into_iter().reduce(|acc, e| lcm(acc, e)).unwrap() as i64
 }
 
 #[cfg(test)]
@@ -100,9 +118,20 @@ ZZZ = (ZZZ, ZZZ)
         assert_eq!(part1(TEST_INPUT_2), 6);
     }
 
+    const TEST_INPUT_3: &str = "LR
+
+11A = (11B, XXX)
+11B = (XXX, 11Z)
+11Z = (11B, XXX)
+22A = (22B, XXX)
+22B = (22C, 22C)
+22C = (22Z, 22Z)
+22Z = (22B, 22B)
+XXX = (XXX, XXX)";
+
     #[test]
     fn test_parse2() {
-        assert_eq!(part2(TEST_INPUT_1), 0);
+        assert_eq!(part2(TEST_INPUT_3), 6);
     }
 }
 
