@@ -4,11 +4,11 @@ use std::{collections::HashMap, str::FromStr};
 const INPUT: &str = include_str!("day07/input.txt");
 
 const CARDS_FACES_P1: &[char] = &[
-    'A', 'K', 'Q', 'J', 'T', '9', '8', '7', '6', '5', '4', '3', '2',
+    '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A',
 ];
 
 const CARDS_FACES_P2: &[char] = &[
-    'A', 'K', 'Q', 'T', '9', '8', '7', '6', '5', '4', '3', '2', 'J',
+    'J', '2', '3', '4', '5', '6', '7', '8', '9', 'T', 'Q', 'K', 'A',
 ];
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -25,8 +25,10 @@ enum HandType {
 #[test]
 fn test_type_ord() {
     assert!(HandType::FiveKind > HandType::FourKind);
+    assert!(HandType::FourKind > HandType::ThreeKind);
 }
 
+#[derive(PartialEq, Eq, Debug)]
 enum Rules {
     Part1,
     Part2,
@@ -36,6 +38,7 @@ struct ParsedHand {
     cards: Vec<char>,
 }
 
+#[derive(PartialEq, Eq)]
 struct Hand {
     cards: Vec<char>,
     hand_type: HandType,
@@ -111,7 +114,7 @@ fn type_from_cards_with_jocker(cards: &Vec<char>) -> HandType {
         .filter_map(|(&key, val)| (key != 'J').then_some(val))
         .collect::<Vec<_>>();
     counts_no_jockers.sort_unstable_by(|a, b| b.cmp(a));
-    // Assume all is ok for defaults
+
     if counts_no_jockers.is_empty() {
         return HandType::FiveKind;
     }
@@ -153,7 +156,7 @@ fn type_from_cards_with_jocker(cards: &Vec<char>) -> HandType {
                     }
                     1 => {
                         if map.get(&'J') == Some(&1) {
-                            HandType::TwoPair
+                            HandType::ThreeKind // here was the bug not TwoPairs
                         } else {
                             HandType::OnePair
                         }
@@ -162,14 +165,16 @@ fn type_from_cards_with_jocker(cards: &Vec<char>) -> HandType {
                 }
             }
         }
-        _ => match map.get(&'J') {
+        1 => match map.get(&'J') {
             Some(&5) => unreachable!(),
             Some(&4) => HandType::FiveKind,
             Some(&3) => HandType::FourKind,
             Some(&2) => HandType::ThreeKind,
             Some(&1) => HandType::OnePair,
-            _ => HandType::High,
+            None => HandType::High,
+            _ => unreachable!(),
         },
+        _ => unreachable!(),
     }
 }
 
@@ -207,32 +212,52 @@ fn test_parse() {
             rules: Rules::Part2
         }
     );
+    assert_eq!(
+        "QJJQ2".parse::<ParsedHand>().unwrap().hand(Rules::Part2),
+        Hand {
+            cards: vec!['Q', 'J', 'J', 'Q', '2'],
+            hand_type: HandType::FourKind,
+            rules: Rules::Part2
+        }
+    );
+    assert_eq!(
+        "233J4".parse::<ParsedHand>().unwrap().hand(Rules::Part2),
+        Hand {
+            cards: vec!['2', '3', '3', 'J', '4'],
+            hand_type: HandType::ThreeKind,
+            rules: Rules::Part2
+        }
+    );
 }
 
-impl PartialOrd for Hand {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl Ord for Hand {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        assert_eq!(self.rules, other.rules);
         if self.hand_type != other.hand_type {
-            return self.hand_type.partial_cmp(&other.hand_type);
+            return self.hand_type.cmp(&other.hand_type);
         } else {
             for (a, b) in self.cards.iter().zip(other.cards.iter()) {
                 let card_list = match self.rules {
                     Rules::Part1 => CARDS_FACES_P1,
                     Rules::Part2 => CARDS_FACES_P2,
                 };
-                if card_list.iter().position(|c| c == a).unwrap()
-                    == card_list.iter().position(|c| c == b).unwrap()
-                {
+                if a == b {
                     continue;
                 }
-                return card_list
-                    .iter()
-                    .position(|c| c == b)
-                    .unwrap()
-                    .partial_cmp(&card_list.iter().position(|c| c == a).unwrap());
+                let pa = card_list.iter().position(|c| c == a).unwrap();
+                let pb = card_list.iter().position(|c| c == b).unwrap();
+                return pa.cmp(&pb);
             }
         }
-        dbg!(self, other);
-        None
+        // should not happen within this context
+        unreachable!();
+        // std::cmp::Ordering::Equal
+    }
+}
+
+impl PartialOrd for Hand {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -247,6 +272,10 @@ fn test_cmp() {
             > "2AAAA".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
     );
     assert!(
+        "77888".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
+            > "77788".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
+    );
+    assert!(
         "KK677".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
             > "KTJJT".parse::<ParsedHand>().unwrap().hand(Rules::Part1)
     );
@@ -254,12 +283,6 @@ fn test_cmp() {
         "QQQQ2".parse::<ParsedHand>().unwrap().hand(Rules::Part2)
             > "JKKK2".parse::<ParsedHand>().unwrap().hand(Rules::Part2)
     );
-}
-
-impl PartialEq for Hand {
-    fn eq(&self, other: &Self) -> bool {
-        self.cards == other.cards && self.hand_type == other.hand_type
-    }
 }
 
 fn part1(input: &str) -> i64 {
@@ -277,7 +300,7 @@ fn part1(input: &str) -> i64 {
             (hand, bet)
         })
         .collect::<Vec<_>>();
-    hands.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    hands.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
     // dbg!(&hands);
     hands
         .into_iter()
@@ -301,8 +324,8 @@ fn part2(input: &str) -> i64 {
             (hand, bet)
         })
         .collect::<Vec<_>>();
-    hands.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-    dbg!(&hands);
+    hands.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+    // dbg!(&hands);
     hands
         .into_iter()
         .enumerate()
@@ -328,6 +351,15 @@ QQQJA 483";
     #[test]
     fn test_parse2() {
         assert_eq!(part2(TEST_INPUT), 5905);
+    }
+
+    #[test]
+    fn test_real_part1() {
+        assert_eq!(part1(INPUT), 246409899);
+    }
+    #[test]
+    fn test_real_part2() {
+        assert_ne!(part2(INPUT), 244990514);
     }
 }
 
