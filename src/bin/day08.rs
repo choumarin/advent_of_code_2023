@@ -87,7 +87,7 @@ fn part2(input: &str) -> i64 {
         }
         all_steps.push(steps)
     }
-    all_steps.into_iter().reduce(|acc, e| lcm(acc, e)).unwrap() as i64
+    all_steps.into_iter().reduce(lcm).unwrap() as i64
 }
 
 #[cfg(test)]
