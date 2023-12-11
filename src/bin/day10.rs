@@ -2,6 +2,7 @@ use core::fmt;
 use std::{
     collections::{HashMap, VecDeque},
     str::FromStr,
+    vec,
 };
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -31,7 +32,7 @@ impl From<char> for Pipe {
             'F' => Pipe::SE,
             '.' => Pipe::Ground,
             'S' => Pipe::Start,
-            _ => unimplemented!(),
+            o => panic!("`{}` not implemented", o),
         }
     }
 }
@@ -45,7 +46,7 @@ impl core::fmt::Debug for Pipe {
             Self::NW => write!(f, "╝"),
             Self::SW => write!(f, "╗"),
             Self::SE => write!(f, "╔"),
-            Self::Ground => write!(f, " "),
+            Self::Ground => write!(f, "-"),
             Self::Start => write!(f, "S"),
         }
     }
@@ -153,7 +154,7 @@ impl Map {
         ret
     }
 
-    fn max_depth(&self) -> i64 {
+    fn depth_map(&self) -> HashMap<Coords, i64> {
         let mut queue = VecDeque::new();
         let mut dmap: HashMap<Coords, i64> = HashMap::new();
         queue.push_back(self.get_start());
@@ -175,7 +176,47 @@ impl Map {
             }
             steps += 1;
         }
-        steps - 1
+        dmap
+    }
+
+    fn count_in(&self, lop: Vec<Coords>) -> i64 {
+        let mut count = 0;
+        for (line, content) in self.0.iter().enumerate() {
+            let mut inside = false;
+            for (col, p) in content.iter().enumerate() {
+                let here = Coords {
+                    line: line as i64,
+                    col: col as i64,
+                };
+                match p {
+                    Pipe::NS | Pipe::NE | Pipe::NW => {
+                        if lop.contains(&here) {
+                            inside = !inside;
+                        } else if inside {
+                            // println!("inside {:?}", &here);
+                            count += 1;
+                        }
+                    }
+                    Pipe::Start => {
+                        let above = here + Direction::N.coords_offset();
+                        if lop.contains(&above)
+                            && self.get(above).is_some_and(|p| {
+                                p.connections().is_some_and(|v| v.contains(&Direction::S))
+                            })
+                        {
+                            inside = !inside;
+                        }
+                    }
+                    _ => {
+                        if !lop.contains(&here) && inside {
+                            // println!("inside {:?}", &here);
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+        count
     }
 }
 
@@ -189,7 +230,7 @@ fn it_parses() {
     dbg!(s.parse::<Map>().unwrap());
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 struct Coords {
     line: i64,
     col: i64,
@@ -235,12 +276,16 @@ impl Direction {
 }
 
 fn part1(input: &str) -> i64 {
-    let map = input.parse::<Map>().unwrap();
-    map.max_depth()
+    let map: Map = input.parse::<Map>().unwrap();
+    let dmap = map.depth_map();
+    dmap.into_values().max().unwrap()
 }
 
 fn part2(input: &str) -> i64 {
-    unimplemented!()
+    let map: Map = input.parse::<Map>().unwrap();
+    let dmap = map.depth_map();
+    let lop = dmap.into_keys().collect();
+    map.count_in(lop)
 }
 
 #[cfg(test)]
@@ -259,6 +304,38 @@ SJ.L7
 |F--J
 LJ...";
 
+    const TEST_INPUT_3: &str = "...........
+.S-------7.
+.|F-----7|.
+.||.....||.
+.||.....||.
+.|L-7.F-J|.
+.|..|.|..|.
+.L--J.L--J.
+...........";
+
+    const TEST_INPUT_4: &str = ".F----7F7F7F7F-7....
+.|F--7||||||||FJ....
+.||.FJ||||||||L7....
+FJL7L7LJLJ||LJ.L-7..
+L--J.L7...LJS7F-7L7.
+....F-J..F7FJ|L7L7L7
+....L7.F7||L7|.L7L7|
+.....|FJLJ|FJ|F7|.LJ
+....FJL-7.||.||||...
+....L---J.LJ.LJLJ...";
+
+    const TEST_INPUT_5: &str = "FF7FSF7F7F7F7F7F---7
+L|LJ||||||||||||F--J
+FL-7LJLJ||||||LJL-77
+F--JF--7||LJLJ7F7FJ-
+L---JF-JLJ.||-FJLJJ7
+|F|F-JF---7F7-L7L|7|
+|FFJF7L7F-JF7|JL---7
+7-L-JL7||F7|L7F-7F7|
+L.L7LFJ|||||FJL7||LJ
+L7JLJL-JLJLJL--JLJ.L";
+
     #[test]
     fn test_part1() {
         assert_eq!(part1(TEST_INPUT_1), 4);
@@ -267,7 +344,10 @@ LJ...";
 
     #[test]
     fn test_parse2() {
-        assert_eq!(part2(TEST_INPUT_1), 2);
+        assert_eq!(part2(TEST_INPUT_3), 4);
+        assert_eq!(part2(TEST_INPUT_4), 8);
+        // dbg!(TEST_INPUT_5.parse::<Map>().unwrap());
+        assert_eq!(part2(TEST_INPUT_5), 10);
     }
 }
 
