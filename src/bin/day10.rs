@@ -1,11 +1,10 @@
 use core::fmt;
-use std::{
-    collections::{HashMap, VecDeque},
-    str::FromStr,
-    vec,
-};
+use std::collections::{HashMap, VecDeque};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+
+mod common;
+use common::{Coords, Map};
 
 const INPUT: &str = include_str!("day10/input.txt");
 
@@ -67,42 +66,9 @@ impl Pipe {
     }
 }
 
-#[derive(PartialEq, Eq)]
-struct Map(Vec<Vec<Pipe>>);
+type PipeMap = Map<Pipe>;
 
-impl FromStr for Map {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Map(s
-            .lines()
-            .map(|l| l.chars().map(|c| c.into()).collect())
-            .collect()))
-    }
-}
-
-impl core::fmt::Debug for Map {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for line in self.0.iter() {
-            for c in line {
-                write!(f, "{:?}", c)?;
-            }
-            writeln!(f)?;
-        }
-        Ok(())
-    }
-}
-
-impl Map {
-    fn get(&self, coords: Coords) -> Option<&Pipe> {
-        if coords.line < 0 || coords.col < 0 {
-            return None;
-        }
-        self.0
-            .get(usize::try_from(coords.line).ok()?)?
-            .get(usize::try_from(coords.col).ok()?)
-    }
-
+impl PipeMap {
     fn get_start(&self) -> Coords {
         self.0
             .iter()
@@ -227,24 +193,7 @@ fn it_parses() {
 .|.|.
 .L-J.
 .....";
-    dbg!(s.parse::<Map>().unwrap());
-}
-
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
-struct Coords {
-    line: i64,
-    col: i64,
-}
-
-impl std::ops::Add for Coords {
-    type Output = Coords;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self::Output {
-            line: self.line + rhs.line,
-            col: self.col + rhs.col,
-        }
-    }
+    dbg!(s.parse::<Map<Pipe>>().unwrap());
 }
 
 #[derive(EnumIter, PartialEq, Eq)]
@@ -276,13 +225,13 @@ impl Direction {
 }
 
 fn part1(input: &str) -> i64 {
-    let map: Map = input.parse::<Map>().unwrap();
+    let map = input.parse::<Map<_>>().unwrap();
     let dmap = map.depth_map();
     dmap.into_values().max().unwrap()
 }
 
 fn part2(input: &str) -> i64 {
-    let map: Map = input.parse::<Map>().unwrap();
+    let map = input.parse::<Map<_>>().unwrap();
     let dmap = map.depth_map();
     let lop = dmap.into_keys().collect();
     map.count_in(lop)
