@@ -1,10 +1,9 @@
-use std::str::FromStr;
-
-use num::complex::ComplexFloat;
+use rayon::prelude::*;
+use std::{collections::HashMap, str::FromStr};
 
 const INPUT: &str = include_str!("day12/input.txt");
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 enum PartStatus {
     Operational,
     Damaged,
@@ -32,6 +31,7 @@ impl Into<char> for PartStatus {
     }
 }
 
+#[derive(PartialEq, Eq, Debug)]
 struct Line {
     parts: Vec<PartStatus>,
     damaged_groups: Vec<i64>,
@@ -58,102 +58,209 @@ impl FromStr for Line {
 }
 
 impl Line {
-    // fn is_valid(&self) -> bool {
-    //     if self.parts.iter().any(|p| *p == PartStatus::Unknown) {
-    //         return false;
-    //     }
-    //     let s = self
-    //         .parts
-    //         .iter()
-    //         .copied()
-    //         .map(|p| Into::<char>::into(p))
-    //         .collect::<String>();
-    //     let t = s
-    //         .split::<char>(PartStatus::Operational.into())
-    //         .map(|sub| sub.len() as i64)
-    //         .collect::<Vec<_>>();
-    //     t == self.damaged_groups
-    // }
-
     fn arrangements_count(&self) -> i64 {
-        Self::arrangements_count_recursive(&self.parts, self.damaged_groups.clone())
+        Self::better_count(&self.parts, &self.damaged_groups, &mut HashMap::new())
+        // self.arrangements_count_recursive(self.parts.clone(), &mut HashMap::new())
     }
 
-    fn arrangements_count_recursive(parts: &[PartStatus], damaged_groups: Vec<i64>) -> i64 {
+    fn valid_arrangement(&self, parts: &[PartStatus]) -> bool {
+        let s = parts
+            .iter()
+            .copied()
+            .map(Into::<char>::into)
+            .collect::<String>();
+        let t = s
+            .split::<char>(PartStatus::Operational.into())
+            .filter(|c| !c.is_empty())
+            .map(|sub| sub.len() as i64)
+            .collect::<Vec<_>>();
+        self.damaged_groups == t
+    }
+
+    fn arrangements_count_recursive(
+        &self,
+        parts: Vec<PartStatus>,
+        cache: &mut HashMap<Vec<PartStatus>, i64>,
+    ) -> i64 {
+        if let Some(res) = cache.get(&parts) {
+            println!("cache hit");
+            return *res;
+        }
+        let ret;
+        if let Some(next) = parts.iter().position(|p| *p == PartStatus::Unknown) {
+            let mut try_operational = parts.clone();
+            try_operational[next] = PartStatus::Operational;
+            let mut try_damaged = parts.clone();
+            try_damaged[next] = PartStatus::Damaged;
+            let count_operational = self.arrangements_count_recursive(try_operational, cache);
+            let count_damaged = self.arrangements_count_recursive(try_damaged, cache);
+            ret = count_operational + count_damaged;
+        } else {
+            if self.valid_arrangement(&parts) {
+                ret = 1;
+            } else {
+                ret = 0;
+            }
+        }
+        cache.insert(parts, ret);
+        ret
+    }
+
+    fn unfold(&mut self) {
+        let mut copy = self.parts.clone();
+        copy.insert(0, PartStatus::Unknown);
+        let copy2 = self.damaged_groups.clone();
+        for _ in 1..=4 {
+            self.parts.append(&mut copy.clone());
+            self.damaged_groups.append(&mut copy2.clone());
+        }
+    }
+
+    fn simplify(&mut self) {
+        let mut index = 1;
+        let mut prev = self.parts[0];
+        while index < self.parts.len() {
+            if prev == PartStatus::Operational && self.parts[index] == PartStatus::Operational {
+                self.parts.remove(index);
+            } else {
+                prev = self.parts[index];
+                index += 1;
+            }
+        }
+    }
+
+    fn better_count(
+        mut parts: &[PartStatus],
+        counts: &[i64],
+        cache: &mut HashMap<(Vec<PartStatus>, Vec<i64>), i64>,
+    ) -> i64 {
+        if let Some(skip) = parts.iter().position(|p| *p != PartStatus::Operational) {
+            parts = &parts[skip..];
+        } else {
+            parts = &[];
+        }
+
+        if let Some(ret) = cache.get(&(parts.to_vec(), counts.to_vec())) {
+            return *ret;
+        }
+
+        let ret;
+
         if parts.is_empty() {
-            if damaged_groups.is_empty() {
-                return 1;
+            if counts.is_empty() {
+                ret = 1;
             } else {
-                return 0;
+                ret = 0;
             }
-        }
-        if damaged_groups.is_empty() {
+        } else if counts.is_empty() {
             if parts.iter().any(|p| *p == PartStatus::Damaged) {
-                return 0;
+                ret = 0;
             } else {
-                return 1;
+                ret = 1;
             }
-        }
-        match parts[0] {
-            PartStatus::Operational => {
-                Self::arrangements_count_recursive(&parts[1..], damaged_groups.clone())
-            }
-            PartStatus::Damaged => {
-                if damaged_groups[0] == 0 {
-                    return 0;
+        } else if parts[0] == PartStatus::Damaged {
+            if parts.len() < counts[0] as usize {
+                // can't have enough damaged parts
+                ret = 0;
+            } else if parts[..(counts[0] as usize)]
+                .iter()
+                .any(|p| *p == PartStatus::Operational)
+            {
+                // that would be 2 groups
+                ret = 0;
+            } else
+            // all the next counts[0] are either damaged or unknown
+            if parts.len() == counts[0] as usize {
+                // it's the last group, so the parts can end with a damaged
+                if counts.len() == 1 {
+                    ret = 1;
+                } else {
+                    ret = 0;
                 }
-                let mut damaged_groups = damaged_groups.clone();
-                damaged_groups[0] -= 1;
-                Self::arrangements_count_recursive(&parts[1..], damaged_groups)
+            } else
+            // all the next counts[0] are damaged or unknown AND there's more
+            if parts[counts[0] as usize] == PartStatus::Damaged {
+                // if that was true, then counts[0] would be +1
+                ret = 0;
+            } else {
+                ret = Self::better_count(&parts[((counts[0] + 1) as usize)..], &counts[1..], cache);
             }
-            PartStatus::Unknown => {
-                let mut damaged_groups2 = damaged_groups.clone();
-                damaged_groups2[0] -= 1;
-                if damaged_groups2[0] == 0 {
-                    damaged_groups2.remove(0);
-                }
-                let it_s_damaged = Self::arrangements_count_recursive(&parts[1..], damaged_groups2);
-                let it_s_operational =  Self::arrangements_count_recursive(&parts[1..], damaged_groups.clone());
-                it_s_damaged + it_s_operational
-            }
+            // move on to the next group, skip the next operational part
+        } else {
+            let mut damaged = parts.to_vec().clone();
+            damaged[0] = PartStatus::Damaged;
+            // damaged case + operational (lets just skip)
+            ret = Self::better_count(&parts[1..], counts, cache)
+                + Self::better_count(&damaged, counts, cache);
         }
+
+        cache.insert((parts.to_vec(), counts.to_vec()), ret);
+        return ret;
     }
 }
 
 #[test]
+fn test_simplify() {
+    let mut l = "#..# 1".parse::<Line>().unwrap();
+    l.simplify();
+    assert_eq!(l, "#.# 1".parse::<Line>().unwrap());
+    let mut l = "...# 1".parse::<Line>().unwrap();
+    l.simplify();
+    assert_eq!(l, ".# 1".parse::<Line>().unwrap());
+}
+
+#[test]
 fn test_arrangement_count() {
-    assert_eq!(". ".parse::<Line>().unwrap().arrangements_count(), 1);
+    // assert_eq!(". ".parse::<Line>().unwrap().arrangements_count(), 1);
     assert_eq!("# 1".parse::<Line>().unwrap().arrangements_count(), 1);
-    assert_eq!("? ".parse::<Line>().unwrap().arrangements_count(), 1);
+    // assert_eq!("? ".parse::<Line>().unwrap().arrangements_count(), 1);
     assert_eq!("? 1".parse::<Line>().unwrap().arrangements_count(), 1);
     assert_eq!("?? 1".parse::<Line>().unwrap().arrangements_count(), 2);
     assert_eq!("?? 2".parse::<Line>().unwrap().arrangements_count(), 1);
-    assert_eq!("?? ".parse::<Line>().unwrap().arrangements_count(), 1);
+    // assert_eq!("?? ".parse::<Line>().unwrap().arrangements_count(), 1);
     assert_eq!("?.? 1".parse::<Line>().unwrap().arrangements_count(), 2);
     assert_eq!("?.? 1,1".parse::<Line>().unwrap().arrangements_count(), 1);
     assert_eq!("#.. 1,1".parse::<Line>().unwrap().arrangements_count(), 0);
     assert_eq!("#.. 1".parse::<Line>().unwrap().arrangements_count(), 1);
     assert_eq!("#.? 1,1".parse::<Line>().unwrap().arrangements_count(), 1);
-    assert_eq!("?#.? 1,1".parse::<Line>().unwrap().arrangements_count(), 2);
-    assert_eq!("#?.? 1,1".parse::<Line>().unwrap().arrangements_count(), 2);
+    assert_eq!("?#.? 1,1".parse::<Line>().unwrap().arrangements_count(), 1);
+    assert_eq!("#?.? 1,1".parse::<Line>().unwrap().arrangements_count(), 1);
     assert_eq!("??.? 1,1".parse::<Line>().unwrap().arrangements_count(), 2);
     assert_eq!("?.?? 1,1".parse::<Line>().unwrap().arrangements_count(), 2);
+    assert_eq!("??.?? 1,1".parse::<Line>().unwrap().arrangements_count(), 4);
     assert_eq!(
-        "??.?? 1,1".parse::<Line>().unwrap().arrangements_count(),
-        4
-    );
-    assert_eq!(
-        "???.### 1,1,3".parse::<Line>().unwrap().arrangements_count(),
+        "???.### 1,1,3"
+            .parse::<Line>()
+            .unwrap()
+            .arrangements_count(),
         1
     );
+    let mut s = ".??..??...?##. 1,1,3".parse::<Line>().unwrap();
+    s.unfold();
+    assert_eq!(s.arrangements_count(), 16384);
 }
 
 fn part1(input: &str) -> i64 {
-    input.lines().map(|l| l.parse::<Line>().unwrap().arrangements_count()).sum()
+    input
+        .lines()
+        .map(|l| {
+            let mut record = l.parse::<Line>().unwrap();
+            record.simplify();
+            record.arrangements_count()
+        })
+        .sum()
 }
 
 fn part2(input: &str) -> i64 {
-    unimplemented!()
+    input
+        .par_lines()
+        .map(|l| {
+            let mut record = l.parse::<Line>().unwrap();
+            record.unfold();
+            // record.simplify();
+            record.arrangements_count()
+        })
+        .sum()
 }
 
 #[cfg(test)]
@@ -174,7 +281,7 @@ mod test {
 
     #[test]
     fn test_parse2() {
-        assert_eq!(part2(TEST_INPUT_1), 82000210);
+        assert_eq!(part2(TEST_INPUT_1), 525152);
     }
 }
 
