@@ -104,24 +104,14 @@ impl Pattern {
 
     fn mirror_line(&self) -> Option<usize> {
         let l_max = self.0.len();
-        for i in 0..(l_max - 1) {
-            // Assumes only 1
-            if self.is_mirror_line(i) {
-                return Some(i);
-            }
-        }
-        None
+        // Assumes only 1
+        (0..(l_max - 1)).find(|i: &usize| self.is_mirror_line(i))
     }
 
     fn mirror_col(&self) -> Option<usize> {
         let c_max = self.0[0].len();
-        for i in 0..(c_max - 1) {
-            // Assumes only 1
-            if self.is_mirror_col(i) {
-                return Some(i);
-            }
-        }
-        None
+        // Assumes only 1
+        (0..(c_max - 1)).find(|i: &usize| self.is_mirror_col(i))
     }
 
     fn score(&self) -> usize {
@@ -260,7 +250,7 @@ fn parse(input: &str) -> Vec<Pattern> {
 }
 
 fn part1(input: &str) -> i64 {
-    parse(input).iter().map(|p|p.score()).sum::<usize>() as i64
+    parse(input).iter().map(|p| p.score()).sum::<usize>() as i64
 }
 
 fn part2(input: &str) -> i64 {
