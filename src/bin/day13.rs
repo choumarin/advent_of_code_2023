@@ -18,7 +18,6 @@ const TEST_INPUT_1: &str = "#.##..##.
 ..##..###
 #....#..#";
 
-
 #[derive(PartialEq, Eq, Debug, Hash, Clone, Copy)]
 enum Terrain {
     Ash,
@@ -63,7 +62,79 @@ impl Pattern {
         self.0.iter().map(|l| l.iter().map(|t| *t).collect())
     }
 
-    fn hashes(&self) -> (HashMap<Vec<Terrain>, Vec<usize>>, HashMap<Vec<Terrain>, Vec<usize>>) {
+    fn mirror_i(i: usize, mirror: usize) -> Option<usize> {
+        let mirror = mirror as f64 + 0.5;
+        let n = 2.0 * mirror - i as f64;
+        (n >= 0.0).then_some(n as usize)
+    }
+
+    fn is_mirror_line(&self, mirror: usize) -> bool {
+        let lines_count = self.0.len();
+        for i in 0..lines_count {
+            let a = self.lines().nth(i).unwrap();
+            let Some(j) = Self::mirror_i(i, mirror) else {
+                continue;
+            };
+            let Some(b) = self.lines().nth(j) else {
+                continue;
+            };
+            if a != b {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn is_mirror_col(&self, mirror: usize) -> bool {
+        let cols_count = self.0[0].len();
+        for i in 0..cols_count {
+            let a = self.cols().nth(i).unwrap();
+            let Some(j) = Self::mirror_i(i, mirror) else {
+                continue;
+            };
+            let Some(b) = self.cols().nth(j) else {
+                continue;
+            };
+            if a != b {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn mirror_line(&self) -> Option<usize> {
+        let l_max = self.0.len();
+        for i in 0..(l_max - 1) {
+            // Assumes only 1
+            if self.is_mirror_line(i) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn mirror_col(&self) -> Option<usize> {
+        let c_max = self.0[0].len();
+        for i in 0..(c_max - 1) {
+            // Assumes only 1
+            if self.is_mirror_col(i) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    fn score(&self) -> usize {
+        self.mirror_line().map(|i| (i + 1) * 100).unwrap_or(0)
+            + self.mirror_col().map(|i| i + 1).unwrap_or(0)
+    }
+
+    fn hashes(
+        &self,
+    ) -> (
+        HashMap<Vec<Terrain>, Vec<usize>>,
+        HashMap<Vec<Terrain>, Vec<usize>>,
+    ) {
         let mut lines: HashMap<Vec<Terrain>, Vec<usize>> = HashMap::new();
         for (i, line) in self.lines().enumerate() {
             lines.entry(line).or_default().push(i);
@@ -80,11 +151,62 @@ impl Pattern {
         for (_, v) in hashes {
             if v.len() >= 2 {
                 candidates.push((v[0] + v[1]) / 2)
-
             }
         }
         todo!()
     }
+}
+
+#[test]
+fn test_mirror() {
+    //  x><x
+    //  x >< x
+    // ><
+    //           ><
+    //      ><
+    // 321123
+    // 01234567890123
+    assert_eq!(Pattern::mirror_i(1, 2), Some(4)); // 2 + (2-1) +1 = 2
+    assert_eq!(Pattern::mirror_i(1, 3), Some(6)); // 3 + (3-1) + 1 = 4
+    assert_eq!(Pattern::mirror_i(1, 0), Some(0));
+    assert_eq!(Pattern::mirror_i(2, 0), None);
+    assert_eq!(Pattern::mirror_i(9, 10), Some(12));
+    assert_eq!(Pattern::mirror_i(10, 10), Some(11));
+    assert_eq!(Pattern::mirror_i(12, 10), Some(9));
+    assert_eq!(Pattern::mirror_i(1, 3), Some(6));
+    assert_eq!(Pattern::mirror_i(0, 3), Some(7));
+}
+
+#[test]
+fn mirror_test() {
+    let p: Pattern = "
+#...##..#
+#....#..#
+..##..###
+#####.##.
+#####.##.
+..##..###
+#....#..#"
+        .parse()
+        .unwrap();
+    assert!(!p.is_mirror_line(5));
+    assert!(p.is_mirror_line(3));
+    assert!(p.is_mirror_line(6));
+    assert_eq!(p.score(), 400);
+    let p: Pattern = "
+#.##..##.
+..#.##.#.
+##......#
+##......#
+..#.##.#.
+..##..##.
+#.#.##.#."
+        .parse()
+        .unwrap();
+    assert!(!p.is_mirror_col(5));
+    assert!(p.is_mirror_col(4));
+    assert!(p.is_mirror_col(9));
+    assert_eq!(p.score(), 5);
 }
 
 struct ColIterator<'a> {
@@ -133,8 +255,12 @@ fn test_hashes() {
     dbg!(p.hashes());
 }
 
+fn parse(input: &str) -> Vec<Pattern> {
+    input.split("\n\n").map(|s| s.parse().unwrap()).collect()
+}
+
 fn part1(input: &str) -> i64 {
-    unimplemented!()
+    parse(input).iter().map(|p|p.score()).sum::<usize>() as i64
 }
 
 fn part2(input: &str) -> i64 {
